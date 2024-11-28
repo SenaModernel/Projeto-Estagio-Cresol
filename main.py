@@ -1,54 +1,92 @@
+import os
 import pandas as pd
-from tkinter import Tk
-from tkinter.filedialog import askopenfilename, asksaveasfilename
+from tkinter import Tk, Listbox, Button, Label, messagebox, filedialog
 
-def unir_planilhas():
-    try:
 
-        Tk().withdraw()  # Oculta a janela principal do Tkinter
-        
-        # Selecionar o primeiro arquivo
-        print("Selecione a primeira planilha:")
-        caminho_arquivo1 = askopenfilename(filetypes=[("Excel Files", "*.xlsx")])
-        if not caminho_arquivo1:
-            print("Nenhum arquivo selecionado.")
+class PlanilhaUnirApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Unir Planilhas")
+        self.root.geometry("400x350")
+
+        # Lista para armazenar caminhos de arquivos
+        self.arquivos = []
+
+        # janelas
+        self.label = Label(root, text="Selecione os arquivos para unir:")
+        self.label.pack(pady=10)
+
+        self.listbox = Listbox(root, height=10, width=50)
+        self.listbox.pack(padx=10, pady=5)
+
+        self.botao_add = Button(root, text="Adicionar Arquivo", command=self.adicionar_arquivo)
+        self.botao_add.pack(pady=5)
+
+        self.botao_remover = Button(root, text="Remover Selecionado", command=self.remover_selecionado)
+        self.botao_remover.pack(pady=5)
+
+        self.botao_unir = Button(root, text="Unir Planilhas", command=self.unir_planilhas, state="disabled")
+        self.botao_unir.pack(pady=10)
+
+    def adicionar_arquivo(self):
+        """Adiciona um arquivo à lista."""
+        caminho = filedialog.askopenfilename(filetypes=[("Excel Files", "*.xlsx")])
+        if caminho:
+            self.arquivos.append(caminho)
+            # Adicionar somente o nome do arquivo na Listbox
+            self.listbox.insert("end", os.path.basename(caminho))
+            # Habilitar o botão "Unir" se houver arquivos selecionados
+            self.botao_unir.config(state="normal")
+
+    def remover_selecionado(self):
+        """Remove o arquivo selecionado na lista."""
+        try:
+            index = self.listbox.curselection()[0]
+            self.arquivos.pop(index)
+            self.listbox.delete(index)
+
+            # Desabilitar o botão "Unir" se não houver mais arquivos
+            if not self.arquivos:
+                self.botao_unir.config(state="disabled")
+        except IndexError:
+            messagebox.showwarning("Aviso", "Nenhum arquivo selecionado para remover.")
+
+    def unir_planilhas(self):
+        """Une as planilhas selecionadas."""
+        if not self.arquivos:
+            messagebox.showwarning("Aviso", "Nenhum arquivo selecionado para unir.")
             return
 
-        # Selecionar o segundo arquivo
-        print("Selecione a segunda planilha:")
-        caminho_arquivo2 = askopenfilename(filetypes=[("Excel Files", "*.xlsx")])
-        if not caminho_arquivo2:
-            print("Nenhum arquivo selecionado.")
-            return
+        try:
+            # Carregar todas as planilhas
+            planilhas = [pd.read_excel(caminho) for caminho in self.arquivos]
 
-        # Carregar as planilhas
-        planilha1 = pd.read_excel(caminho_arquivo1)
-        planilha2 = pd.read_excel(caminho_arquivo2)
+            # Validar as planilhas
+            colunas_base = planilhas[0].columns
+            for idx, planilha in enumerate(planilhas[1:], start=2):
+                if planilha.shape[1] != len(colunas_base):
+                    raise ValueError(f"A planilha {idx} possui número de colunas diferente.")
+                if not all(planilha.columns == colunas_base):
+                    raise ValueError(f"A planilha {idx} possui nomes de colunas diferentes.")
 
-        # Verificar número de colunas
-        if planilha1.shape[1] != planilha2.shape[1]:
-            raise ValueError("As planilhas possuem números diferentes de colunas.")
+            # Concatenar as planilhas
+            resultado = pd.concat(planilhas, ignore_index=True)
 
-        # Verificar nomes das colunas
-        if not all(planilha1.columns == planilha2.columns):
-            raise ValueError("Os nomes das colunas não são iguais.")
+            # Salvar a planilha final
+            caminho_saida = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel Files", "*.xlsx")])
+            if caminho_saida:
+                resultado.to_excel(caminho_saida, index=False)
+                messagebox.showinfo("Sucesso", f"Planilhas unidas com sucesso!\nSalvo em: {caminho_saida}")
+            else:
+                messagebox.showwarning("Aviso", "Nenhum local selecionado para salvar o arquivo.")
 
-        # Concatenar as planilhas
-        resultado = pd.concat([planilha1, planilha2], ignore_index=True)
+        except ValueError as e:
+            messagebox.showerror("Erro de Validação", str(e))
+        except Exception as e:
+            messagebox.showerror("Erro", f"Ocorreu um erro inesperado: {e}")
 
-        # Selecionar o local para salvar o arquivo final
-        print("Selecione onde salvar a planilha resultante:")
-        caminho_saida = asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel Files", "*.xlsx")])
-        if not caminho_saida:
-            print("Nenhum local selecionado. Operação cancelada.")
-            return
 
-        # Salvar o arquivo unido
-        resultado.to_excel(caminho_saida, index=False)
-        print("Planilhas unidas com sucesso!")
-
-    except Exception as e:
-        print(f"Erro: {e}")
-
-# Executar a função
-unir_planilhas()
+if __name__ == "__main__":
+    root = Tk()
+    app = PlanilhaUnirApp(root)
+    root.mainloop()
