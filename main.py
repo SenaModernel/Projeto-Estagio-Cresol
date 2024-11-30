@@ -1,43 +1,60 @@
 import os
 import pandas as pd
-from tkinter import Tk, Listbox, Button, Label, messagebox, filedialog, Toplevel, Entry, ttk
+from tkinter import Tk, Button, Label, Listbox, filedialog, Menu, messagebox, ttk
+from tkinter.simpledialog import askstring
 
 
 class PlanilhaUnirApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Unir Planilhas")
-        self.root.geometry("500x500")
+        self.root.title("Editor de Planilhas")
+        self.root.geometry("1000x600")
 
         # Lista para armazenar caminhos de arquivos e planilhas
         self.arquivos = []
         self.planilhas = []
-        self.erros_colunas = False
+        self.planilha_atual = None
+        self.coluna_selecionada = None  # Índice da coluna selecionada
 
-        # Widgets
-        self.label = Label(root, text="Selecione os arquivos para unir:")
-        self.label.pack(pady=10)
+        # Criar os painéis
+        self.painel_esquerdo()
+        self.painel_direito()
 
-        self.listbox = Listbox(root, height=15, width=60)
+    def painel_esquerdo(self):
+        """Configura o painel esquerdo com a lista de planilhas."""
+        self.frame_esquerdo = ttk.Frame(self.root, width=200)
+        self.frame_esquerdo.pack(side="left", fill="y")
+
+        # Lista de planilhas carregadas
+        self.label_planilhas = Label(self.frame_esquerdo, text="Planilhas Carregadas")
+        self.label_planilhas.pack(pady=10)
+
+        self.listbox = Listbox(self.frame_esquerdo, height=30, width=25)
         self.listbox.pack(padx=10, pady=5)
+        self.listbox.bind("<<ListboxSelect>>", self.carregar_planilha)
 
-        self.botao_add = Button(root, text="Adicionar Arquivo", command=self.adicionar_arquivo)
+        self.botao_add = Button(self.frame_esquerdo, text="Adicionar Planilha", command=self.adicionar_arquivo)
         self.botao_add.pack(pady=5)
 
-        self.botao_remover = Button(root, text="Remover Selecionado", command=self.remover_selecionado)
+        self.botao_remover = Button(self.frame_esquerdo, text="Remover Selecionada", command=self.remover_planilha)
         self.botao_remover.pack(pady=5)
 
-        self.botao_ajustar = Button(root, text="Resolver Erros", command=self.ajustar_colunas, state="disabled")
-        self.botao_ajustar.pack(pady=5)
+    def painel_direito(self):
+        """Configura o painel direito para exibir a planilha selecionada."""
+        self.frame_direito = ttk.Frame(self.root)
+        self.frame_direito.pack(side="right", fill="both", expand=True)
 
-        self.botao_unir = Button(root, text="Unir Planilhas", command=self.unir_planilhas, state="disabled")
-        self.botao_unir.pack(pady=10)
+        self.label_planilha_atual = Label(self.frame_direito, text="Nenhuma Planilha Selecionada", font=("Arial", 14))
+        self.label_planilha_atual.pack(pady=10)
 
-        self.botao_encerrar = Button(root, text="Encerrar Aplicação", command=self.encerrar_aplicacao)
-        self.botao_encerrar.pack(pady=10)
+        self.tree = ttk.Treeview(self.frame_direito)
+        self.tree.pack(fill="both", expand=True)
+
+        # Adicionar menu de contexto ao painel direito
+        self.tree.bind("<Button-3>", self.menu_contexto)
 
     def adicionar_arquivo(self):
-        """Adiciona um arquivo à lista e carrega a planilha."""
+        """Adiciona uma nova planilha ao painel esquerdo."""
         caminho = filedialog.askopenfilename(filetypes=[("Excel Files", "*.xlsx")])
         if caminho:
             try:
@@ -45,116 +62,113 @@ class PlanilhaUnirApp:
                 self.arquivos.append(caminho)
                 self.planilhas.append(planilha)
                 self.listbox.insert("end", os.path.basename(caminho))
-
-                # Após adicionar, verificar se há erros
-                self.verificar_erros()
-
+                messagebox.showinfo("Sucesso", "Planilha adicionada com sucesso!")
             except Exception as e:
                 messagebox.showerror("Erro", f"Erro ao carregar o arquivo: {e}")
 
-    def remover_selecionado(self):
-        """Remove o arquivo selecionado na lista."""
+    def remover_planilha(self):
+        """Remove a planilha selecionada."""
         try:
             index = self.listbox.curselection()[0]
             self.arquivos.pop(index)
             self.planilhas.pop(index)
             self.listbox.delete(index)
 
-            # Após remover, verificar novamente se há erros
-            self.verificar_erros()
+            # Limpar painel direito se a planilha exibida for removida
+            self.planilha_atual = None
+            self.label_planilha_atual.config(text="Nenhuma Planilha Selecionada")
+            for item in self.tree.get_children():
+                self.tree.delete(item)
+
+            messagebox.showinfo("Sucesso", "Planilha removida com sucesso!")
+        except IndexError:
+            messagebox.showwarning("Aviso", "Nenhuma planilha selecionada para remover.")
+
+    def carregar_planilha(self, event):
+        """Carrega e exibe a planilha selecionada no painel direito."""
+        try:
+            index = self.listbox.curselection()[0]
+            self.planilha_atual = self.planilhas[index]
+            self.label_planilha_atual.config(text=f"Planilha: {os.path.basename(self.arquivos[index])}")
+
+            # Limpar o Treeview antes de carregar novos dados
+            for item in self.tree.get_children():
+                self.tree.delete(item)
+
+            # Configurar as colunas do Treeview
+            self.tree["columns"] = list(self.planilha_atual.columns)
+            self.tree["show"] = "headings"
+
+            for col in self.planilha_atual.columns:
+                self.tree.heading(col, text=col)
+                self.tree.column(col, anchor="center")
+
+            # Inserir os dados no Treeview
+            for _, row in self.planilha_atual.iterrows():
+                self.tree.insert("", "end", values=list(row))
 
         except IndexError:
-            messagebox.showwarning("Aviso", "Nenhum arquivo selecionado para remover.")
+            pass
 
-    def verificar_erros(self):
-        """Verifica se existem erros de colunas entre as planilhas."""
-        if len(self.planilhas) < 2:
-            # Desabilitar todos os botões se não houver planilhas suficientes
-            self.botao_unir.config(state="disabled")
-            self.botao_ajustar.config(state="disabled")
+    def menu_contexto(self, event):
+        """Exibe o menu de contexto ao clicar com o botão direito."""
+        # Verificar se há uma planilha carregada
+        if self.planilha_atual is None:
+            messagebox.showwarning("Aviso", "Nenhuma planilha selecionada para editar.")
             return
 
-        # Comparar colunas
-        colunas_base = self.planilhas[0].columns
-        self.erros_colunas = False
-        for planilha in self.planilhas[1:]:
-            if not planilha.columns.equals(colunas_base):
-                self.erros_colunas = True
-                break
-
-        # Habilitar os botões com base no resultado
-        if self.erros_colunas:
-            self.botao_ajustar.config(state="normal")
-            self.botao_unir.config(state="disabled")
-        else:
-            self.botao_ajustar.config(state="disabled")
-            self.botao_unir.config(state="normal")
-
-    def ajustar_colunas(self):
-        """Exibe a planilha com erros e permite ajustes manuais."""
-        if not self.erros_colunas:
-            messagebox.showinfo("Sem Erros", "Nenhum erro encontrado nas colunas.")
+        # Identificar a coluna clicada
+        coluna = self.tree.identify_column(event.x)
+        if not coluna:
+            messagebox.showwarning("Aviso", "Nenhuma coluna identificada.")
             return
 
-        for idx, planilha in enumerate(self.planilhas, start=1):
-            self.exibir_planilha(idx, planilha)
+        # Armazenar o índice da coluna clicada
+        self.coluna_selecionada = int(coluna[1:]) - 1
 
-    def exibir_planilha(self, index, planilha):
-        """Exibe a planilha em uma janela visual."""
-        ajuste_window = Toplevel(self.root)
-        ajuste_window.title(f"Editar Planilha {index}")
-        ajuste_window.geometry("700x500")
+        # Criar menu de contexto
+        menu = Menu(self.root, tearoff=0)
+        menu.add_command(label="Renomear Coluna", command=self.renomear_coluna)
+        menu.add_command(label="Excluir Coluna", command=self.excluir_coluna)
+        menu.post(event.x_root, event.y_root)
 
-        # Exibir colunas como Treeview
-        tree = ttk.Treeview(ajuste_window)
-        tree.pack(fill="both", expand=True)
+    def renomear_coluna(self):
+        """Permite renomear uma coluna."""
+        if self.planilha_atual is None:
+            messagebox.showwarning("Aviso", "Nenhuma planilha selecionada.")
+            return
 
-        tree["columns"] = list(planilha.columns)
-        tree["show"] = "headings"
+        if self.coluna_selecionada is None:
+            messagebox.showwarning("Aviso", "Nenhuma coluna selecionada.")
+            return
 
-        for col in planilha.columns:
-            tree.heading(col, text=col, command=lambda _col=col: self.alterar_nome_coluna(index, planilha, _col))
-            tree.column(col, width=100, anchor="center")
+        # Identificar o nome da coluna selecionada
+        nome_coluna = self.tree["columns"][self.coluna_selecionada]
 
-        # Inserir dados na Treeview
-        for i, row in planilha.iterrows():
-            tree.insert("", "end", values=list(row))
-
-        # Botões para salvar ou descartar alterações
-        botao_salvar = Button(ajuste_window, text="Salvar Alterações", command=lambda: self.salvar_alteracoes(index, planilha))
-        botao_salvar.pack(pady=5)
-
-        botao_descartar = Button(ajuste_window, text="Descartar Alterações", command=ajuste_window.destroy)
-        botao_descartar.pack(pady=5)
-
-    def alterar_nome_coluna(self, index, planilha, coluna_atual):
-        """Permite alterar o nome de uma coluna."""
-        novo_nome = askstring("Renomear Coluna", f"Digite o novo nome para a coluna '{coluna_atual}':")
+        # Solicitar o novo nome
+        novo_nome = askstring("Renomear Coluna", f"Digite o novo nome para a coluna '{nome_coluna}':")
         if novo_nome:
-            planilha.rename(columns={coluna_atual: novo_nome}, inplace=True)
-            messagebox.showinfo("Alteração Realizada", f"A coluna '{coluna_atual}' foi renomeada para '{novo_nome}'.")
+            self.planilha_atual.rename(columns={nome_coluna: novo_nome}, inplace=True)
+            self.carregar_planilha(None)
 
-    def salvar_alteracoes(self, index, planilha):
-        """Salva alterações e revalida planilhas."""
-        self.planilhas[index - 1] = planilha
-        messagebox.showinfo("Sucesso", f"As alterações na planilha {index} foram salvas.")
-        self.verificar_erros()
+    def excluir_coluna(self):
+        """Exclui a coluna selecionada."""
+        if self.planilha_atual is None:
+            messagebox.showwarning("Aviso", "Nenhuma planilha selecionada.")
+            return
 
-    def unir_planilhas(self):
-        """Une as planilhas selecionadas."""
-        try:
-            resultado = pd.concat(self.planilhas, ignore_index=True)
-            caminho_saida = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel Files", "*.xlsx")])
-            if caminho_saida:
-                resultado.to_excel(caminho_saida, index=False)
-                messagebox.showinfo("Sucesso", f"Planilhas unidas com sucesso!\nSalvo em: {caminho_saida}")
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao unir planilhas: {e}")
+        if self.coluna_selecionada is None:
+            messagebox.showwarning("Aviso", "Nenhuma coluna selecionada.")
+            return
 
-    def encerrar_aplicacao(self):
-        """Encerra a aplicação."""
-        self.root.quit()
-        self.root.destroy()
+        # Identificar o nome da coluna selecionada
+        nome_coluna = self.tree["columns"][self.coluna_selecionada]
+
+        # Confirmar exclusão
+        confirmacao = messagebox.askyesno("Confirmação", f"Deseja realmente excluir a coluna '{nome_coluna}'?")
+        if confirmacao:
+            self.planilha_atual.drop(columns=[nome_coluna], inplace=True)
+            self.carregar_planilha(None)
 
 
 if __name__ == "__main__":
